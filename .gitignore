@@ -1,0 +1,7 @@
+.idea
+*~
+vendor
+Tests/Fixture/App/lock
+Tests/Fixture/App/cache
+Tests/Fixture/App/logs
+test.log

@@ -1,0 +1,17 @@
+{
+    "name": "lafourchette/lock",
+    "homepage": "https://github.com/lafourchette/lock",
+    "description": "Just lock",
+    "keywords": [],
+    "type": "",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "David Moreau",
+            "email": "dmoreau@lafourchette.com"
+        }
+    ],
+    "autoload": {
+        "psr-0": { "LaFourchette": "lib" }
+    }
+}

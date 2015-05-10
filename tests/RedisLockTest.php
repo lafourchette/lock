@@ -8,126 +8,126 @@ use LaFourchette\Lock\LockInterface;
  */
 class RedisLockTest extends \PHPUnit_Framework_TestCase
 {
-    protected function getRedisConnexionMock()
+    protected function getRedisConnectionMock()
     {
-      return $this->getMockBuilder('Redis')
-            ->setMethods(array('get', 'set', 'delete'))
+        return $this->getMockBuilder('Redis')
+            ->setMethods(array('get', 'set', 'delete', 'connect'))
             ->getMock();
     }
-
-    public function testGetLockKey()
+    
+    protected function getRedisLockMock($redisMock)
     {
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $redisLock = new RedisLock($this->redisConnexion);
+        $redisLockMock = $this->getMockBuilder('LaFourchette\Lock\RedisLock')
+            ->setConstructorArgs(array(array('host'=>'127.0.0.1'), 'lock_key_test'))
+            ->setMethods(array('initializeConnection', 'getConnection', 'getNewInstanceOfRedis'))
+            ->getMock();
         
-        $this->assertNull($redisLock->getLockKey());
+        $redisLockMock->expects($this->any())
+            ->method('getConnection')
+            ->will($this->returnCallback(
+                function () use ($redisMock) {
+                    return $redisMock;
+                }
+            ));
+            
+        return $redisLockMock;
+    }
+
+    public function testGetterOnConstruct()
+    {
+        //Exception
+        $connectionInfos = array('host'=>'127.0.0.1');
+        try {
+            $redisLock = new RedisLock($connectionInfos, '');
+        } catch (LogicException $e) {
+            $this->assertInstanceOf('LogicException', $e);
+        }
+
+        //Setter
+        $redisLockMock = $this->getRedisLockMock($this->getRedisConnectionMock());
+        
+        $this->assertEquals($redisLockMock->getLockKey(), 'lock_key_test');
+        $this->assertEquals($redisLockMock->getConnectionInfos(), $connectionInfos);
+        $this->assertInstanceOf('Redis', $redisLockMock->getConnection());
     }
     
     public function testSetLockKey()
     {
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $redisLock = new RedisLock($this->redisConnexion);
+        $redisLockMock = $this->getRedisLockMock($this->getRedisConnectionMock());
         
-        $redisLock->setLockKey('key1');
-        $this->assertEquals($redisLock->getLockKey(), 'key1');
+        $redisLockMock->setLockKey('key1');
+        $this->assertEquals($redisLockMock->getLockKey(), 'key1');
     }
     
     public function testAcquire()
     {
-        // Exception 
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $redisLock = new RedisLock($this->redisConnexion);
-        try {
-            $redisLock->acquire();
-        } catch (LogicException $e) {
-            $this->assertInstanceOf('LogicException', $e);
-        }
-        
         // Content Lock Exist
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $this->redisConnexion->expects($this->any())
+        $redisConnection = $this->getRedisConnectionMock();
+        $redisConnection->expects($this->any())
             ->method('get')
             ->will($this->returnValue('value1'));
         
-        $redisLock = new RedisLock($this->redisConnexion);
-        $redisLock->setLockKey('key1');
-        $this->assertFalse($redisLock->acquire());
+        $redisLockMock = $this->getRedisLockMock($redisConnection);
+        $redisLockMock->setLockKey('key1');
+        $this->assertFalse($redisLockMock->acquire());
         
         // Set Key Value with success
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $this->redisConnexion->expects($this->any())
+        $redisConnection = $this->getRedisConnectionMock();
+        $redisConnection->expects($this->any())
             ->method('set')
             ->will($this->returnValue(true));
         
-        $redisLock = new RedisLock($this->redisConnexion);
-        $redisLock->setLockKey('key1');
-        $this->assertTrue($redisLock->acquire());
+        $redisLockMock = $this->getRedisLockMock($redisConnection);
+        $redisLockMock->setLockKey('key1');
+        $this->assertTrue($redisLockMock->acquire());
         
         // Set Key Value with failure
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $redisLock = new RedisLock($this->redisConnexion);
-        $redisLock->setLockKey('key1');
-        $this->assertFalse($redisLock->acquire());
-    }
+        $redisLockMock = $this->getRedisLockMock($this->getRedisConnectionMock());
+        $redisLockMock->setLockKey('key1');
+        $this->assertFalse($redisLockMock->acquire());
+    }        
     
     public function testCheck()
     {
-        // Exception 
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $redisLock = new RedisLock($this->redisConnexion);
-        try {
-            $redisLock->check();
-        } catch (LogicException $e) {
-            $this->assertInstanceOf('LogicException', $e);
-        }
-        
         // Get lock not exist
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $this->redisConnexion->expects($this->any())
+        $redisConnection = $this->getRedisConnectionMock();
+        $redisConnection->expects($this->any())
             ->method('get')
             ->will($this->returnValue(false));
         
-        $redisLock = new RedisLock($this->redisConnexion);
-        $redisLock->setLockKey('value1');
-        $this->assertEquals($redisLock->check(), LockInterface::CHECK_RETURN_NOLOCK);
+        $redisLockMock = $this->getRedisLockMock($redisConnection);
+        $redisLockMock->setLockKey('value1');
+        $this->assertEquals($redisLockMock->check(), LockInterface::CHECK_RETURN_NOLOCK);
         
         // Get lock exist
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $this->redisConnexion->expects($this->any())
+        $redisConnection = $this->getRedisConnectionMock();
+        $redisConnection->expects($this->any())
             ->method('get')
             ->will($this->returnValue('value1'));
         
-        $redisLock = new RedisLock($this->redisConnexion);
-        $redisLock->setLockKey('value1');
-        $this->assertEquals($redisLock->check(), 'value1');
+        $redisLockMock = $this->getRedisLockMock($redisConnection);
+        $redisLockMock->setLockKey('value1');
+        $this->assertEquals($redisLockMock->check(), 'value1');
     }
     
     public function testRelease()
     {
-        // Exception
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $redisLock = new RedisLock($this->redisConnexion);
-        try {
-            $redisLock->release();
-        } catch (LogicException $e) {
-            $this->assertInstanceOf('LogicException', $e);
-        }
-        
         // Delete lock
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $redisLock = new RedisLock($this->redisConnexion);
-        $redisLock->setLockKey('value1');
+        $redisLockMock = $this->getRedisLockMock($this->getRedisConnectionMock());
+        $redisLockMock->setLockKey('value1');
         
-        $this->assertEquals($redisLock->release(), LockInterface::CHECK_RETURN_DEADLOCK);
+        $this->assertEquals($redisLockMock->release(), LockInterface::CHECK_RETURN_DEADLOCK);
     }
     
     public function testGetInfo()
     {
-        $this->redisConnexion = $this->getRedisConnexionMock();
-        $redisLock = new RedisLock($this->redisConnexion);
+        $redisLockMock = $this->getRedisLockMock($this->getRedisConnectionMock());
         
-        $this->assertEquals($redisLock->getInfo(), array(
-            'lock_key' => null,
+        $this->assertEquals($redisLockMock->getInfo(), array(
+            'lock_key' => 'lock_key_test',
+            'connection_infos' => array(
+                'host' => '127.0.0.1',
+            ),
         ));
     }
 }

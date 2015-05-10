@@ -11,9 +11,15 @@ class RedisLock implements LockInterface
 {
     /**
      *
-     * @var \Redis connexion 
+     * @var \Redis connection 
      */
     protected $conn = null;
+    
+    /**
+     *
+     * @var array Informations of connection
+     */
+    protected $connection_infos = null;
     
     /**
      *
@@ -21,9 +27,54 @@ class RedisLock implements LockInterface
      */
     protected $lock_key = null;
     
-    public function __construct(\Redis $conn)
+    /**
+     * 
+     * @param array $connInfos Information of connection
+     * @param string $lockKey Key of the lock
+     * @throws \LogicException
+     */
+    public function __construct(array $connInfos, $lockKey)
     {
-        $this->conn = $conn;
+        if (empty($lockKey)) {
+            throw new \LogicException('$lockKey can\'t be empty');
+        }
+        
+        $this->initializeConnection($connInfos);
+        
+        $this->setLockKey($lockKey);
+        $this->setConnectionInfos($connInfos);
+    }
+    
+    /**
+     * 
+     * @param array $connInfos Informations of connection
+     */
+    protected function initializeConnection(array $connInfos)
+    {
+        $this->conn = $this->getNewInstanceOfRedis();
+        $return = $this->getConnection()->connect($connInfos['host'], $connInfos['port'], $connInfos['timeout']);
+        
+        if (!$return) {
+            throw new Exception('Error of connection Redis');
+        }
+    }
+    
+    /**
+     * 
+     * @return \Redis
+     */
+    protected function getNewInstanceOfRedis()
+    {
+        return new \Redis();
+    }
+
+    /**
+     * 
+     * @return \Redis Connection of Redis
+     */
+    public function getConnection()
+    {
+        return $this->conn;
     }
     
     /**
@@ -46,9 +97,26 @@ class RedisLock implements LockInterface
     
     /**
      * 
+     * @return array Informations of connection
+     */
+    public function getConnectionInfos()
+    {
+        return $this->connection_infos;
+    }
+    
+    /**
+     * 
+     * @param array $connectionInfos Informations of connection
+     */
+    public function setConnectionInfos(array $connectionInfos)
+    {
+        $this->connection_infos = $connectionInfos;
+    }
+    
+    /**
+     * 
      * @param mixed $metadata Value of the lock key
      * @return boolean
-     * @throws \LogicException
      */
     public function acquire($metadata = null)
     {
@@ -57,28 +125,16 @@ class RedisLock implements LockInterface
             return false;
         }
         
-        $lockKey = $this->getLockKey();
-        if (empty($lockKey)) {
-            throw new \LogicException('$lockKey attribute must be set before calling this function');
-        }
-        
-        return (TRUE === $this->conn->set($lockKey, $metadata) ? true : false);
+        return (TRUE === $this->getConnection()->set($this->getLockKey(), $metadata) ? true : false);
     }
     
     /**
      * 
      * @return int|string Failed check or value of the key returned
-     * @throws \LogicException
      */
     public function check()
     {
-        $lockKey = $this->getLockKey();
-        
-        if (empty($lockKey)) {
-            throw new \LogicException('$lockKey attribute must be set before calling this function');
-        }
-        
-        $contentLock = $this->conn->get($lockKey);
+        $contentLock = $this->getConnection()->get($this->getLockKey());
         if (FALSE == $contentLock) {
             
             return LockInterface::CHECK_RETURN_NOLOCK;
@@ -89,27 +145,24 @@ class RedisLock implements LockInterface
     
     /**
      * 
-     * @throws \LogicException
+     * @return int Success of dead lock
      */
     public function release()
     {
-        $lockKey = $this->getLockKey();
-        
-        if (empty($lockKey)) {
-            throw new \LogicException('$lockKey attribute must be set before calling this function');
-        }
-        
-        $this->conn->delete($lockKey);
+        $this->getConnection()->delete($this->getLockKey());
         
         return LockInterface::CHECK_RETURN_DEADLOCK;
     }
     
     /**
      * 
-     * @return array Information about redis lock
+     * @return array Informations about redis lock
      */
     public function getInfo()
     {
-        return array('lock_key' => $this->getLockKey());
+        $info = array('lock_key' => $this->getLockKey());
+        $info = array_merge($info, array('connection_infos' => $this->getConnectionInfos()));
+        
+        return $info;
     }
 }
